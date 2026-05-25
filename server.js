@@ -40,3 +40,4 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`CarAlert rodando na porta ${PORT}`);
 });
+app.use('/api/vehicles', require('./routes/vehicles')(db));
