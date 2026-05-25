@@ -23,6 +23,7 @@ app.get('/', (req, res) => {
 
 app.use('/api/alerts', require('./routes/alerts')(db, io));
 app.use('/api/users', require('./routes/users')(db));
+app.use('/api/vehicles', require('./routes/vehicles')(db));
 
 io.on('connection', (socket) => {
   socket.on('update_location', async ({ userId, lat, lng }) => {
