@@ -17,6 +17,10 @@ const db = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+db.query('SELECT 1')
+  .then(() => console.log('Banco de dados conectado!'))
+  .catch(err => console.error('Erro no banco:', err.message));
+
 app.get('/', (req, res) => {
   res.json({ status: 'CarAlert backend online!' });
 });
@@ -27,18 +31,21 @@ app.use('/api/vehicles', require('./routes/vehicles')(db));
 
 io.on('connection', (socket) => {
   socket.on('update_location', async ({ userId, lat, lng }) => {
-    await db.query(
-      `UPDATE profiles
-       SET last_location = ST_SetSRID(ST_MakePoint($1,$2),4326)
-       WHERE id = $3`,
-      [lng, lat, userId]
-    );
-    socket.join(`user:${userId}`);
+    try {
+      await db.query(
+        `UPDATE profiles
+         SET last_location = ST_SetSRID(ST_MakePoint($1,$2),4326)
+         WHERE id = $3`,
+        [lng, lat, userId]
+      );
+      socket.join('user:' + userId);
+    } catch(e) {
+      console.error(e.message);
+    }
   });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`CarAlert rodando na porta ${PORT}`);
+  console.log('CarAlert rodando na porta ' + PORT);
 });
-app.use('/api/vehicles', require('./routes/vehicles')(db));
