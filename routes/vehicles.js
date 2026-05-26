@@ -25,9 +25,9 @@ module.exports = (db) => {
 
       const { rows } = await db.query(
         `INSERT INTO vehicles (plate, model, color, user_id, recompensa)
-         VALUES ($1, $2, $3, (SELECT id FROM profiles LIMIT 1), $4)
-         RETURNING id, plate, model, color, recompensa,
-         (SELECT id FROM profiles LIMIT 1) as "userId"`,
+ VALUES ($1, $2, $3, (SELECT id FROM profiles LIMIT 1), $4)
+ RETURNING vehicles.id, vehicles.plate, vehicles.model, vehicles.color, vehicles.recompensa,
+ (SELECT id FROM profiles LIMIT 1) as "userId"`,
         [plate.toUpperCase().trim(), model.trim(), color.trim(), recompensa || null]
       );
 
