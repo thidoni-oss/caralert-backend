@@ -22,13 +22,15 @@ module.exports = (db, io) => {
 
   router.post('/:id/sighting', async (req, res) => {
     try {
-      const { reporterId, lat, lng } = req.body;
+      const { reporterId, lat, lng, chavePix } = req.body;
       const alertId = req.params.id;
+
       await db.query(
-        `INSERT INTO sightings (alert_id, reporter_id, location)
-         VALUES ($1,$2,ST_SetSRID(ST_MakePoint($3,$4),4326))`,
-        [alertId, reporterId, lng, lat]
+        `INSERT INTO sightings (alert_id, reporter_id, location, chave_pix_testemunha)
+         VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3,$4),4326), $5)`,
+        [alertId, reporterId, lng, lat, chavePix || null]
       );
+
       await db.query(
         `UPDATE alerts
          SET last_seen_location = ST_SetSRID(ST_MakePoint($1,$2),4326),
@@ -36,6 +38,7 @@ module.exports = (db, io) => {
          WHERE id = $3`,
         [lng, lat, alertId]
       );
+
       io.emit('new_sighting', { alertId, lat, lng });
       res.json({ success: true });
     } catch (e) {
@@ -47,7 +50,7 @@ module.exports = (db, io) => {
     try {
       const { lat, lng } = req.query;
       const { rows } = await db.query(
-        `SELECT a.id, v.plate, v.model, v.color,
+        `SELECT a.id, v.plate, v.model, v.color, v.recompensa,
                 ST_X(a.last_seen_location) as lng,
                 ST_Y(a.last_seen_location) as lat,
                 a.updated_at
@@ -62,6 +65,72 @@ module.exports = (db, io) => {
         [lng, lat]
       );
       res.json(rows);
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  router.post('/:id/confirmar', async (req, res) => {
+    try {
+      const alertId = req.params.id;
+      const { emailPagador } = req.body;
+
+      const { rows } = await db.query(
+        `SELECT s.chave_pix_testemunha, v.recompensa
+         FROM sightings s
+         JOIN alerts a ON a.id = s.alert_id
+         JOIN vehicles v ON v.id = a.vehicle_id
+         WHERE s.alert_id = $1
+           AND s.chave_pix_testemunha IS NOT NULL
+         ORDER BY s.created_at DESC LIMIT 1`,
+        [alertId]
+      );
+
+      await db.query(
+        `UPDATE alerts SET status = 'found', updated_at = NOW() WHERE id = $1`,
+        [alertId]
+      );
+
+      if (rows.length === 0) {
+        return res.json({ success: true, chavePix: null, recompensa: null });
+      }
+
+      const chavePix = rows[0].chave_pix_testemunha;
+      const recompensa = rows[0].recompensa;
+
+      let pixData = null;
+      if (recompensa && process.env.MP_ACCESS_TOKEN) {
+        const mpRes = await fetch('https://api.mercadopago.com/v1/payments', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + process.env.MP_ACCESS_TOKEN,
+            'X-Idempotency-Key': alertId + '-recompensa'
+          },
+          body: JSON.stringify({
+            transaction_amount: parseFloat(recompensa),
+            description: 'Recompensa AvisaAI',
+            payment_method_id: 'pix',
+            payer: { email: emailPagador || 'pagador@avisaai.com.br' }
+          })
+        });
+        const mpData = await mpRes.json();
+        if (mpRes.ok) {
+          pixData = {
+            qr_code: mpData.point_of_interaction?.transaction_data?.qr_code,
+            qr_code_base64: mpData.point_of_interaction?.transaction_data?.qr_code_base64,
+            paymentId: mpData.id
+          };
+        }
+      }
+
+      res.json({
+        success: true,
+        chavePix,
+        recompensa,
+        pixData
+      });
+
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
