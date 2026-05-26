@@ -20,7 +20,6 @@ module.exports = (db, io) => {
     }
   });
 
-  // Testemunha reporta avistamento com chave PIX
   router.post('/:id/sighting', async (req, res) => {
     try {
       const { reporterId, lat, lng, chavePix } = req.body;
@@ -47,7 +46,6 @@ module.exports = (db, io) => {
     }
   });
 
-  // Busca alertas ativos com dados de recompensa
   router.get('/active', async (req, res) => {
     try {
       const { lat, lng } = req.query;
@@ -72,28 +70,66 @@ module.exports = (db, io) => {
     }
   });
 
-  // Dono confirma que encontrou o carro
   router.post('/:id/confirmar', async (req, res) => {
     try {
       const alertId = req.params.id;
+      const { emailPagador } = req.body;
 
-      // Busca última testemunha com chave PIX
-      const { rows: sightings } = await db.query(
-        `SELECT chave_pix_testemunha FROM sightings
-         WHERE alert_id = $1
-           AND chave_pix_testemunha IS NOT NULL
-         ORDER BY created_at DESC LIMIT 1`,
+      const { rows } = await db.query(
+        `SELECT s.chave_pix_testemunha, v.recompensa
+         FROM sightings s
+         JOIN alerts a ON a.id = s.alert_id
+         JOIN vehicles v ON v.id = a.vehicle_id
+         WHERE s.alert_id = $1
+           AND s.chave_pix_testemunha IS NOT NULL
+         ORDER BY s.created_at DESC LIMIT 1`,
         [alertId]
       );
 
-      // Marca alerta como encontrado
       await db.query(
         `UPDATE alerts SET status = 'found', updated_at = NOW() WHERE id = $1`,
         [alertId]
       );
 
-      const chavePix = sightings[0]?.chave_pix_testemunha || null;
-      res.json({ success: true, chavePix });
+      if (rows.length === 0) {
+        return res.json({ success: true, chavePix: null, recompensa: null });
+      }
+
+      const { chave_pix_testemunha, recompensa } = rows[0];
+
+      let pixData = null;
+      if (recompensa && process.env.MP_ACCESS_TOKEN) {
+        const mpRes = await fetch('https://api.mercadopago.com/v1/payments', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + process.env.MP_ACCESS_TOKEN,
+            'X-Idempotency-Key': alertId + '-recompensa'
+          },
+          body: JSON.stringify({
+            transaction_amount: parseFloat(recompensa),
+            description: 'Recompensa AvisaAI',
+            payment_method_id: 'pix',
+            payer: { email: emailPagador || 'pagador@avisaai.com.br' }
+          })
+        });
+        const mpData = await mpRes.json();
+        if (mpRes.ok) {
+          pixData = {
+            qr_code: mpData.point_of_interaction?.transaction_data?.qr_code,
+            qr_code_base64: mpData.point_of_interaction?.transaction_data?.qr_code_base64,
+            paymentId: mpData.id
+          };
+        }
+      }
+
+      res.json({
+        success: true,
+        chavePix: chave_pix_testemunha,
+        recompensa,
+        pixData
+      });
+
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
