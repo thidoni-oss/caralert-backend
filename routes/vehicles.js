@@ -4,10 +4,9 @@ module.exports = (db) => {
 
   router.post('/', async (req, res) => {
     try {
-      const { plate, model, color, recompensa } = req.body;
+      const { plate, model, color, recompensa, tipo } = req.body;
       const placaUpper = plate.toUpperCase().trim();
 
-      // Trava de duplicidade
       const duplicado = await db.query(
         `SELECT a.id FROM alerts a
          JOIN vehicles v ON v.id = a.vehicle_id
@@ -24,16 +23,14 @@ module.exports = (db) => {
         });
       }
 
-      // Busca um profile para vincular
       const perfil = await db.query('SELECT id FROM profiles LIMIT 1');
       const perfilId = perfil.rows.length > 0 ? perfil.rows[0].id : null;
 
-      // Insere o veículo
       const resultado = await db.query(
-        `INSERT INTO vehicles (plate, model, color, user_id, recompensa)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, plate, model, color, recompensa`,
-        [placaUpper, model.trim(), color.trim(), perfilId, recompensa || null]
+        `INSERT INTO vehicles (plate, model, color, user_id, recompensa, tipo)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id, plate, model, color, recompensa, tipo`,
+        [placaUpper, model.trim(), color.trim(), perfilId, recompensa || null, tipo || 'carro']
       );
 
       const veiculo = resultado.rows[0];
