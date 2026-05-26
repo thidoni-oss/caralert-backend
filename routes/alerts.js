@@ -42,7 +42,8 @@ module.exports = (db, io) => {
       io.emit('new_sighting', { alertId, lat, lng });
       res.json({ success: true });
     } catch (e) {
-      res.status(500).json({ error: e.message });
+  console.error('ERRO SIGHTING:', e.message);
+  res.status(500).json({ error: e.message });
     }
   });
 
