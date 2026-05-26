@@ -4,9 +4,9 @@ module.exports = (db) => {
 
   router.post('/', async (req, res) => {
     try {
-      const { plate, model, color, recompensa, chavePix } = req.body;
+      const { plate, model, color, recompensa } = req.body;
 
-      // Trava de duplicidade — mesma placa, mesmo dia, raio de 5km
+      // Trava de duplicidade
       const { rows: existentes } = await db.query(
         `SELECT id FROM alerts a
          JOIN vehicles v ON v.id = a.vehicle_id
@@ -24,29 +24,14 @@ module.exports = (db) => {
       }
 
       const { rows } = await db.query(
-        `INSERT INTO vehicles (plate, model, color, user_id)
-         VALUES ($1, $2, $3, (SELECT id FROM profiles LIMIT 1))
-         RETURNING id, plate, model, color,
+        `INSERT INTO vehicles (plate, model, color, user_id, recompensa)
+         VALUES ($1, $2, $3, (SELECT id FROM profiles LIMIT 1), $4)
+         RETURNING id, plate, model, color, recompensa,
          (SELECT id FROM profiles LIMIT 1) as "userId"`,
-        [plate.toUpperCase().trim(), model.trim(), color.trim()]
+        [plate.toUpperCase().trim(), model.trim(), color.trim(), recompensa || null]
       );
 
-      const veiculo = rows[0];
-
-      // Salva recompensa e chave PIX se informadas
-      if (recompensa && chavePix) {
-        await db.query(
-          `UPDATE vehicles SET
-             recompensa = $1,
-             chave_pix = $2
-           WHERE id = $3`,
-          [recompensa, chavePix, veiculo.id]
-        );
-        veiculo.recompensa = recompensa;
-        veiculo.chavePix = chavePix;
-      }
-
-      res.json(veiculo);
+      res.json(rows[0]);
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
