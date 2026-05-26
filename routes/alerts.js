@@ -138,3 +138,20 @@ module.exports = (db, io) => {
 
   return router;
 };
+router.get('/:id/avistamentos', async (req, res) => {
+    try {
+      const alertId = req.params.id;
+      const { rows } = await db.query(
+        `SELECT s.id, s.chave_pix_testemunha, s.foto_url, s.created_at,
+                ST_X(s.location) as lng,
+                ST_Y(s.location) as lat
+         FROM sightings s
+         WHERE s.alert_id = $1
+         ORDER BY s.created_at DESC`,
+        [alertId]
+      );
+      res.json(rows);
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
