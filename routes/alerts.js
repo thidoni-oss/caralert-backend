@@ -26,10 +26,11 @@ module.exports = (db, io) => {
       const alertId = req.params.id;
 
       await db.query(
-        `INSERT INTO sightings (alert_id, reporter_id, location, chave_pix_testemunha)
-         VALUES ($1,$2,ST_SetSRID(ST_MakePoint($3,$4),4326),$5)`,
-        [alertId, reporterId, lng, lat, chavePix || null]
-      );
+       await db.query(
+  `INSERT INTO sightings (alert_id, location, chave_pix_testemunha)
+   VALUES ($1, ST_SetSRID(ST_MakePoint($2,$3),4326), $4)`,
+  [alertId, lng, lat, chavePix || null]
+);
 
       await db.query(
         `UPDATE alerts
