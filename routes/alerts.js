@@ -21,16 +21,15 @@ module.exports = (db, io) => {
   });
 
   router.post('/:id/sighting', async (req, res) => {
-    try {
-      const { reporterId, lat, lng, chavePix } = req.body;
-      const alertId = req.params.id;
+  try {
+    const { reporterId, lat, lng, chavePix } = req.body;
+    const alertId = req.params.id;
 
-      await db.query(
-       await db.query(
-  `INSERT INTO sightings (alert_id, location, chave_pix_testemunha)
-   VALUES ($1, ST_SetSRID(ST_MakePoint($2,$3),4326), $4)`,
-  [alertId, lng, lat, chavePix || null]
-);
+    await db.query(
+      `INSERT INTO sightings (alert_id, location, chave_pix_testemunha)
+       VALUES ($1, ST_SetSRID(ST_MakePoint($2,$3),4326), $4)`,
+      [alertId, lng, lat, chavePix || null]
+    );
 
       await db.query(
         `UPDATE alerts
