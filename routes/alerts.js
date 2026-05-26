@@ -47,11 +47,11 @@ module.exports = (db, io) => {
     }
   });
 
-  router.get('/active', async (req, res) => {
+ router.get('/active', async (req, res) => {
     try {
       const { lat, lng } = req.query;
       const { rows } = await db.query(
-        `SELECT a.id, v.plate, v.model, v.color, v.recompensa,
+        `SELECT a.id, v.plate, v.model, v.color, v.recompensa, v.tipo,
                 ST_X(a.last_seen_location) as lng,
                 ST_Y(a.last_seen_location) as lat,
                 a.updated_at
@@ -70,7 +70,7 @@ module.exports = (db, io) => {
       res.status(500).json({ error: e.message });
     }
   });
-
+  
   router.post('/:id/confirmar', async (req, res) => {
     try {
       const alertId = req.params.id;
