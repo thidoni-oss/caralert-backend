@@ -22,15 +22,15 @@ module.exports = (db, io) => {
   });
 
   router.post('/:id/sighting', async (req, res) => {
-  try {
-    const { reporterId, lat, lng, chavePix } = req.body;
-    const alertId = req.params.id;
+    try {
+      const { reporterId, lat, lng, chavePix } = req.body;
+      const alertId = req.params.id;
 
-    await db.query(
-      `INSERT INTO sightings (alert_id, location, chave_pix_testemunha)
-       VALUES ($1, ST_SetSRID(ST_MakePoint($2,$3),4326), $4)`,
-      [alertId, lng, lat, chavePix || null]
-    );
+      await db.query(
+        `INSERT INTO sightings (alert_id, location, chave_pix_testemunha)
+         VALUES ($1, ST_SetSRID(ST_MakePoint($2,$3),4326), $4)`,
+        [alertId, lng, lat, chavePix || null]
+      );
 
       await db.query(
         `UPDATE alerts
@@ -40,43 +40,46 @@ module.exports = (db, io) => {
         [lng, lat, alertId]
       );
 
-     io.emit('new_sighting', { alertId, lat, lng });
+      io.emit('new_sighting', { alertId, lat, lng });
 
-const alertInfo = await db.query(
-  `SELECT v.plate, v.model, v.color, v.recompensa
-   FROM alerts a JOIN vehicles v ON v.id = a.vehicle_id
-   WHERE a.id = $1`, [alertId]
-);
-if (alertInfo.rows.length > 0 && chavePix) {
-  const v = alertInfo.rows[0];
-  enviarEmailTestemunha({
-    placa: v.plate, modelo: v.model, cor: v.color,
-    recompensa: v.recompensa, chavePix, lat, lng, alertId
-  }).catch(console.error);
-setTimeout(async () => {
-      const ainda = await db.query(
+      const alertInfo = await db.query(
         `SELECT v.plate, v.model, v.color, v.recompensa
          FROM alerts a JOIN vehicles v ON v.id = a.vehicle_id
-         WHERE a.id = $1 AND a.status = 'active'`, [alertId]
+         WHERE a.id = $1`, [alertId]
       );
-      if (ainda.rows.length > 0) {
-        const v = ainda.rows[0];
-        enviarEmailDevolucao({
+
+      if (alertInfo.rows.length > 0 && chavePix) {
+        const v = alertInfo.rows[0];
+        enviarEmailTestemunha({
           placa: v.plate, modelo: v.model, cor: v.color,
-          recompensa: v.recompensa, alertId
+          recompensa: v.recompensa, chavePix, lat, lng, alertId
         }).catch(console.error);
+
+        setTimeout(async () => {
+          const ainda = await db.query(
+            `SELECT v.plate, v.model, v.color, v.recompensa
+             FROM alerts a JOIN vehicles v ON v.id = a.vehicle_id
+             WHERE a.id = $1 AND a.status = 'active'`, [alertId]
+          );
+          if (ainda.rows.length > 0) {
+            const v = ainda.rows[0];
+            enviarEmailDevolucao({
+              placa: v.plate, modelo: v.model, cor: v.color,
+              recompensa: v.recompensa, alertId
+            }).catch(console.error);
+          }
+        }, 5 * 24 * 60 * 60 * 1000);
       }
-    }, 5 * 24 * 60 * 60 * 1000);
 
-    res.json({ success: true });
+      res.json({ success: true });
 
-  } catch (e) {
-    console.error('ERRO SIGHTING:', e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
+    } catch (e) {
+      console.error('ERRO SIGHTING:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
 
- router.get('/active', async (req, res) => {
+  router.get('/active', async (req, res) => {
     try {
       const { lat, lng } = req.query;
       const { rows } = await db.query(
@@ -99,7 +102,7 @@ setTimeout(async () => {
       res.status(500).json({ error: e.message });
     }
   });
-  
+
   router.post('/:id/confirmar', async (req, res) => {
     try {
       const alertId = req.params.id;
@@ -184,4 +187,4 @@ setTimeout(async () => {
   });
 
   return router;
-  };
+};
