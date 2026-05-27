@@ -1,4 +1,5 @@
 const { Resend } = require('resend');
+const ExcelJS = require('exceljs');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const EMAIL_ADMIN = 'thi.doni@gmail.com';
 
@@ -7,6 +8,57 @@ const adicionarNaFila = async (db, tipo, dados) => {
     `INSERT INTO email_queue (tipo, dados) VALUES ($1, $2)`,
     [tipo, JSON.stringify(dados)]
   );
+};
+
+const gerarExcel = async (recompensas, devolucoes) => {
+  const workbook = new ExcelJS.Workbook();
+
+  const abaRecompensas = workbook.addWorksheet('Pagamentos Recompensa');
+  abaRecompensas.columns = [
+    { header: 'Placa', key: 'placa', width: 12 },
+    { header: 'Veículo', key: 'veiculo', width: 25 },
+    { header: 'Recompensa (R$)', key: 'recompensa', width: 18 },
+    { header: 'Chave PIX Testemunha', key: 'chavePix', width: 30 },
+    { header: 'Localização', key: 'localizacao', width: 25 },
+    { header: 'ID do Alerta', key: 'alertId', width: 38 },
+    { header: 'Data', key: 'data', width: 20 },
+  ];
+  abaRecompensas.getRow(1).font = { bold: true };
+  recompensas.forEach(r => {
+    const d = r.dados;
+    abaRecompensas.addRow({
+      placa: d.placa,
+      veiculo: `${d.cor} ${d.modelo}`,
+      recompensa: d.recompensa,
+      chavePix: d.chavePix,
+      localizacao: `${d.lat}, ${d.lng}`,
+      alertId: d.alertId,
+      data: new Date(r.criado_em).toLocaleString('pt-BR'),
+    });
+  });
+
+  const abaDevolucoes = workbook.addWorksheet('Devoluções Caução');
+  abaDevolucoes.columns = [
+    { header: 'Placa', key: 'placa', width: 12 },
+    { header: 'Veículo', key: 'veiculo', width: 25 },
+    { header: 'Valor a Devolver (R$)', key: 'recompensa', width: 22 },
+    { header: 'ID do Alerta', key: 'alertId', width: 38 },
+    { header: 'Data', key: 'data', width: 20 },
+  ];
+  abaDevolucoes.getRow(1).font = { bold: true };
+  devolucoes.forEach(r => {
+    const d = r.dados;
+    abaDevolucoes.addRow({
+      placa: d.placa,
+      veiculo: `${d.cor} ${d.modelo}`,
+      recompensa: d.recompensa,
+      alertId: d.alertId,
+      data: new Date(r.criado_em).toLocaleString('pt-BR'),
+    });
+  });
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return buffer.toString('base64');
 };
 
 const processarFila = async (db) => {
@@ -48,11 +100,20 @@ const processarFila = async (db) => {
     });
   }
 
+  const excelBase64 = await gerarExcel(recompensas, devolucoes);
+  const dataHoje = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+
   await resend.emails.send({
     from: 'AvisaAI <onboarding@resend.dev>',
     to: EMAIL_ADMIN,
     subject: `📋 AvisaAI — ${rows.length} item(s) pendente(s)`,
-    html
+    html,
+    attachments: [
+      {
+        filename: `AvisaAI_${dataHoje}.xlsx`,
+        content: excelBase64,
+      }
+    ]
   });
 
   const ids = rows.map(r => r.id);
@@ -60,6 +121,8 @@ const processarFila = async (db) => {
     `UPDATE email_queue SET enviado = TRUE WHERE id = ANY($1)`,
     [ids]
   );
+
+  console.log(`Email enviado com ${rows.length} item(s) e Excel anexado.`);
 };
 
 module.exports = { adicionarNaFila, processarFila };
