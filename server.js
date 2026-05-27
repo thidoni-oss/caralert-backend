@@ -4,6 +4,7 @@ const cors = require('cors');
 const { Server } = require('socket.io');
 const http = require('http');
 const { Pool } = require('pg');
+const { processarFila } = require('./routes/emails');
 
 const app = express();
 const server = http.createServer(app);
@@ -29,6 +30,30 @@ app.use('/api/alerts', require('./routes/alerts')(db, io));
 app.use('/api/users', require('./routes/users')(db));
 app.use('/api/vehicles', require('./routes/vehicles')(db));
 app.use('/api/pagamentos', require('./routes/pagamentos')(db));
+app.use('/api/pagamentos', require('./routes/pagamentos')(db));
+
+const agendarEmails = () => {
+  const agora = new Date();
+  const horarios = [8, 14, 20];
+  
+  horarios.forEach(hora => {
+    const proximo = new Date();
+    proximo.setHours(hora, 0, 0, 0);
+    if (proximo <= agora) proximo.setDate(proximo.getDate() + 1);
+    
+    const diff = proximo - agora;
+    setTimeout(() => {
+      processarFila(db).catch(console.error);
+      setInterval(() => processarFila(db).catch(console.error), 24 * 60 * 60 * 1000);
+    }, diff);
+    
+    console.log(`Email agendado para ${proximo.toLocaleString('pt-BR')}`);
+  });
+};
+
+agendarEmails();
+
+io.on('connection', (socket) => {
 
 io.on('connection', (socket) => {
   socket.on('update_location', async ({ userId, lat, lng }) => {
