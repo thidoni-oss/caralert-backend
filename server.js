@@ -54,8 +54,6 @@ const agendarEmails = () => {
 agendarEmails();
 
 io.on('connection', (socket) => {
-
-io.on('connection', (socket) => {
   socket.on('update_location', async ({ userId, lat, lng }) => {
     try {
       await db.query(
