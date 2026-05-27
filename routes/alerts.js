@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { enviarEmailTestemunha, enviarEmailDevolucao } = require('./emails');
+const { adicionarNaFila } = require('./emails');
 
 module.exports = (db, io) => {
 
@@ -50,10 +50,10 @@ module.exports = (db, io) => {
 
       if (alertInfo.rows.length > 0 && chavePix) {
         const v = alertInfo.rows[0];
-        enviarEmailTestemunha({
+        adicionarNaFila(db, 'testemunha', {
           placa: v.plate, modelo: v.model, cor: v.color,
           recompensa: v.recompensa, chavePix, lat, lng, alertId
-        }).catch(console.error);
+      }).catch(console.error);
 
         setTimeout(async () => {
           const ainda = await db.query(
@@ -61,12 +61,13 @@ module.exports = (db, io) => {
              FROM alerts a JOIN vehicles v ON v.id = a.vehicle_id
              WHERE a.id = $1 AND a.status = 'active'`, [alertId]
           );
+          
           if (ainda.rows.length > 0) {
             const v = ainda.rows[0];
-            enviarEmailDevolucao({
+           enviarEmailDevolucao({
               placa: v.plate, modelo: v.model, cor: v.color,
               recompensa: v.recompensa, alertId
-            }).catch(console.error);
+          }).catch(console.error);
           }
         }, 5 * 24 * 60 * 60 * 1000);
       }
