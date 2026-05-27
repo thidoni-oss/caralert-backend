@@ -155,4 +155,4 @@ module.exports = (db, io) => {
   });
 
   return router;
-  });
+  };
