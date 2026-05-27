@@ -136,9 +136,7 @@ module.exports = (db, io) => {
     }
   });
 
-  return router;
-};
-router.get('/:id/avistamentos', async (req, res) => {
+  router.get('/:id/avistamentos', async (req, res) => {
     try {
       const alertId = req.params.id;
       const { rows } = await db.query(
@@ -154,4 +152,7 @@ router.get('/:id/avistamentos', async (req, res) => {
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
+  });
+
+  return router;
   });
