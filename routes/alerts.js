@@ -64,10 +64,10 @@ module.exports = (db, io) => {
           
           if (ainda.rows.length > 0) {
             const v = ainda.rows[0];
-           enviarEmailDevolucao({
-              placa: v.plate, modelo: v.model, cor: v.color,
-              recompensa: v.recompensa, alertId
-          }).catch(console.error);
+          adicionarNaFila(db, 'devolucao', {
+  placa: v.plate, modelo: v.model, cor: v.color,
+  recompensa: v.recompensa, alertId
+}).catch(console.error);
           }
         }, 5 * 24 * 60 * 60 * 1000);
       }
