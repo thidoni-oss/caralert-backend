@@ -33,7 +33,69 @@ app.use('/api/pagamentos', require('./routes/pagamentos')(db));
 app.use('/api/pagamentos', require('./routes/pagamentos')(db));
 
 const agendarEmails = () => {
+const verificarAlertasVencidos = async () => {
+  try {
+    const { rows } = await db.query(`
+      SELECT a.id, a.created_at, a.numero_bo,
+             v.plate, v.model, v.color, v.recompensa
+      FROM alerts a
+      JOIN vehicles v ON v.id = a.vehicle_id
+      WHERE a.status = 'active'
+        AND a.created_at <= NOW() - INTERVAL '5 days'
+    `);
+
+    for (const alerta of rows) {
+      const diasAtivo = Math.floor(
+        (new Date() - new Date(alerta.created_at)) / (1000 * 60 * 60 * 24)
+      );
+
+      if (diasAtivo >= 10) {
+        await db.query(
+          `UPDATE alerts SET status = 'cancelled', updated_at = NOW() WHERE id = $1`,
+          [alerta.id]
+        );
+        await adicionarNaFila(db, 'devolucao', {
+          alertId: alerta.id,
+          placa: alerta.plate,
+          modelo: alerta.model,
+          cor: alerta.color,
+          recompensa: alerta.recompensa,
+          motivo: `Alerta encerrado automaticamente no dia ${diasAtivo} sem resposta do dono`
+        });
+        console.log(`Alerta ${alerta.id} encerrado automaticamente no dia ${diasAtivo}`);
+      } else if (diasAtivo >= 6) {
+        await adicionarNaFila(db, 'aviso_vencimento', {
+          alertId: alerta.id,
+          placa: alerta.plate,
+          modelo: alerta.model,
+          cor: alerta.color,
+          recompensa: alerta.recompensa,
+          diasAtivo,
+          motivo: `Alerta sem resposta — dia ${diasAtivo} de 10`
+        });
+        console.log(`Aviso enviado para alerta ${alerta.id} — dia ${diasAtivo}`);
+      }
+    }
+  } catch (e) {
+    console.error('Erro verificarAlertasVencidos:', e.message);
+  }
+};
+
+const agendarVerificacaoDiaria = () => {
   const agora = new Date();
+  const proximo = new Date();
+  proximo.setHours(9, 0, 0, 0);
+  if (proximo <= agora) proximo.setDate(proximo.getDate() + 1);
+  const diff = proximo - agora;
+  setTimeout(() => {
+    verificarAlertasVencidos();
+    setInterval(verificarAlertasVencidos, 24 * 60 * 60 * 1000);
+  }, diff);
+  console.log(`Verificacao diaria agendada para ${proximo.toLocaleString('pt-BR')}`);
+};
+
+agendarVerificacaoDiaria();  
+ const agora = new Date();
   const horarios = [8, 14, 20];
   
   horarios.forEach(hora => {
