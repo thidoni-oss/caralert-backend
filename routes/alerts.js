@@ -141,7 +141,7 @@ module.exports = (db, io) => {
             'X-Idempotency-Key': alertId + '-recompensa'
           },
           body: JSON.stringify({
-            transaction_amount: parseFloat(recompensa),
+            transaction_amount: parseFloat(recompensa) * 1.01,
             description: 'Recompensa AvisaAI',
             payment_method_id: 'pix',
             payer: { email: emailPagador || 'pagador@avisaai.com.br' }
@@ -160,7 +160,7 @@ module.exports = (db, io) => {
       res.json({
         success: true,
         chavePix: chave_pix_testemunha,
-        recompensa,
+        recompensa: (parseFloat(recompensa) * 1.01).toFixed(2),
         pixData
       });
 
