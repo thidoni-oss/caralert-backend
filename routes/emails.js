@@ -16,10 +16,10 @@ const gerarExcel = async (recompensas, devolucoes) => {
   const abaRecompensas = workbook.addWorksheet('Pagamentos Recompensa');
   abaRecompensas.columns = [
     { header: 'Placa', key: 'placa', width: 12 },
-    { header: 'Veículo', key: 'veiculo', width: 25 },
+    { header: 'Veiculo', key: 'veiculo', width: 25 },
     { header: 'Recompensa (R$)', key: 'recompensa', width: 18 },
     { header: 'Chave PIX Testemunha', key: 'chavePix', width: 30 },
-    { header: 'Localização', key: 'localizacao', width: 25 },
+    { header: 'Localizacao', key: 'localizacao', width: 25 },
     { header: 'ID do Alerta', key: 'alertId', width: 38 },
     { header: 'Data', key: 'data', width: 20 },
   ];
@@ -37,10 +37,10 @@ const gerarExcel = async (recompensas, devolucoes) => {
     });
   });
 
-  const abaDevolucoes = workbook.addWorksheet('Devoluções Caução');
+  const abaDevolucoes = workbook.addWorksheet('Devolucoes Caucao');
   abaDevolucoes.columns = [
     { header: 'Placa', key: 'placa', width: 12 },
-    { header: 'Veículo', key: 'veiculo', width: 25 },
+    { header: 'Veiculo', key: 'veiculo', width: 25 },
     { header: 'Valor a Devolver (R$)', key: 'recompensa', width: 22 },
     { header: 'ID do Alerta', key: 'alertId', width: 38 },
     { header: 'Data', key: 'data', width: 20 },
@@ -69,33 +69,51 @@ const processarFila = async (db) => {
 
   const recompensas = rows.filter(r => r.tipo === 'testemunha');
   const devolucoes = rows.filter(r => r.tipo === 'devolucao');
+  const avisos = rows.filter(r => r.tipo === 'aviso_vencimento');
 
   let html = `<h2>Resumo AvisaAI — ${new Date().toLocaleString('pt-BR')}</h2>`;
 
   if (recompensas.length > 0) {
-    html += `<h3>🚨 Recompensas pendentes (${recompensas.length})</h3>`;
+    html += `<h3>Recompensas pendentes (${recompensas.length})</h3>`;
     recompensas.forEach(r => {
       const d = r.dados;
       html += `
         <div style="border:1px solid #ddd;padding:12px;margin:8px 0;border-radius:8px">
-          <p><strong>Veículo:</strong> ${d.placa} — ${d.cor} ${d.modelo}</p>
+          <p><strong>Veiculo:</strong> ${d.placa} — ${d.cor} ${d.modelo}</p>
           <p><strong>Recompensa:</strong> R$ ${d.recompensa}</p>
           <p><strong>Chave PIX da testemunha:</strong> ${d.chavePix}</p>
-          <p><strong>Localização:</strong> ${d.lat}, ${d.lng}</p>
+          <p><strong>Localizacao:</strong> ${d.lat}, ${d.lng}</p>
           <p><strong>ID do alerta:</strong> ${d.alertId}</p>
         </div>`;
     });
   }
 
   if (devolucoes.length > 0) {
-    html += `<h3>⏰ Devoluções pendentes (${devolucoes.length})</h3>`;
+    html += `<h3>Devolucoes pendentes (${devolucoes.length})</h3>`;
     devolucoes.forEach(r => {
       const d = r.dados;
       html += `
         <div style="border:1px solid #ddd;padding:12px;margin:8px 0;border-radius:8px">
-          <p><strong>Veículo:</strong> ${d.placa} — ${d.cor} ${d.modelo}</p>
+          <p><strong>Veiculo:</strong> ${d.placa} — ${d.cor} ${d.modelo}</p>
           <p><strong>Valor a devolver:</strong> R$ ${d.recompensa}</p>
           <p><strong>ID do alerta:</strong> ${d.alertId}</p>
+          ${d.numeroBo ? `<p><strong>Numero B.O.:</strong> ${d.numeroBo}</p>` : ''}
+          <p><strong>Motivo:</strong> ${d.motivo}</p>
+        </div>`;
+    });
+  }
+
+  if (avisos.length > 0) {
+    html += `<h3>Alertas sem resposta (${avisos.length})</h3>`;
+    avisos.forEach(r => {
+      const d = r.dados;
+      html += `
+        <div style="border:1px solid #ddd;padding:12px;margin:8px 0;border-radius:8px;border-left:4px solid #FFA000">
+          <p><strong>Veiculo:</strong> ${d.placa} — ${d.cor} ${d.modelo}</p>
+          <p><strong>Dias ativo:</strong> ${d.diasAtivo} de 10</p>
+          <p><strong>Recompensa em caucao:</strong> R$ ${d.recompensa}</p>
+          <p><strong>ID do alerta:</strong> ${d.alertId}</p>
+          <p><strong>Obs:</strong> ${d.motivo}</p>
         </div>`;
     });
   }
@@ -106,7 +124,7 @@ const processarFila = async (db) => {
   await resend.emails.send({
     from: 'AvisaAI <onboarding@resend.dev>',
     to: EMAIL_ADMIN,
-    subject: `📋 AvisaAI — ${rows.length} item(s) pendente(s)`,
+    subject: `AvisaAI — ${rows.length} item(s) pendente(s)`,
     html,
     attachments: [
       {
