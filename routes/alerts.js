@@ -186,6 +186,36 @@ module.exports = (db, io) => {
       res.status(500).json({ error: e.message });
     }
   });
+router.post('/:id/decisao5dias', async (req, res) => {
+  try {
+    const alertId = req.params.id;
+    const { numeroBo, decisao } = req.body;
 
+    if (!numeroBo) {
+      return res.status(400).json({ error: 'Numero do B.O. obrigatorio' });
+    }
+
+    if (decisao === 'desistir') {
+      await db.query(
+        `UPDATE alerts SET status = 'cancelled', numero_bo = $1, data_decisao_5dias = NOW() WHERE id = $2`,
+        [numeroBo, alertId]
+      );
+      await adicionarNaFila(db, 'devolucao', {
+        alertId, numeroBo,
+        motivo: 'Dono desistiu das buscas no dia 5'
+      });
+    } else {
+      await db.query(
+        `UPDATE alerts SET numero_bo = $1, data_decisao_5dias = NOW() WHERE id = $2`,
+        [numeroBo, alertId]
+      );
+    }
+
+    res.json({ success: true, decisao });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+  
   return router;
 };
