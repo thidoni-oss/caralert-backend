@@ -4,16 +4,21 @@ module.exports = (db) => {
 
   router.post('/register', async (req, res) => {
     try {
-      const { name, phone } = req.body;
+      const { name, phone, cpf } = req.body;
+
       const { rows } = await db.query(
-        `INSERT INTO profiles (name, phone)
-         VALUES ($1, $2)
-         ON CONFLICT (phone) DO UPDATE SET name=$1
-         RETURNING id, name, phone`,
-        [name, phone]
+        `INSERT INTO profiles (name, phone, cpf)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (phone) DO UPDATE SET name=$1, cpf=$3
+         RETURNING id, name, phone, cpf`,
+        [name, phone, cpf || null]
       );
       res.json(rows[0]);
     } catch (e) {
+      // Erro de CPF duplicado
+      if (e.code === '23505' && e.constraint && e.constraint.includes('cpf')) {
+        return res.status(409).json({ error: 'Este CPF já está cadastrado.' });
+      }
       res.status(500).json({ error: e.message });
     }
   });
