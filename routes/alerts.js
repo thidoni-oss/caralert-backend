@@ -136,7 +136,6 @@ module.exports = (db, io, admin) => {
   router.post('/:id/sighting', async (req, res) => {
     try {
       const { reporterId, lat, lng, chavePix, fotoUrl } = req.body;
-      console.log('SIGHTING RECEBIDO:', JSON.stringify(req.body));
       const alertId = req.params.id;
 
       await db.query(
