@@ -1,7 +1,6 @@
 const router = require('express').Router();
 const { adicionarNaFila } = require('./emails');
 
-
 module.exports = (db, io, admin) => {
 
   // Função auxiliar: envia push para o dono do alerta via Expo
@@ -137,6 +136,7 @@ module.exports = (db, io, admin) => {
   router.post('/:id/sighting', async (req, res) => {
     try {
       const { reporterId, lat, lng, chavePix, fotoUrl } = req.body;
+      console.log('SIGHTING RECEBIDO:', JSON.stringify(req.body));
       const alertId = req.params.id;
 
       await db.query(
