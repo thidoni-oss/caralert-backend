@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const { adicionarNaFila } = require('./emails');
 
+
 module.exports = (db, io, admin) => {
 
   // Função auxiliar: envia push para o dono do alerta via Expo
