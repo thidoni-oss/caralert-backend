@@ -25,7 +25,8 @@ module.exports = (db) => {
 
   router.put('/:id/token', async (req, res) => {
     try {
-      const { fcmToken, lat, lng } = req.body;
+     const { fcmToken, lat, lng } = req.body;
+    console.log('Token recebido - lat:', lat, 'lng:', lng);
 
       if (lat && lng) {
         await db.query(
