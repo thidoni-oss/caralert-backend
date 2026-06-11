@@ -97,6 +97,12 @@ module.exports = (db, io, admin) => {
       );
       const alerta = rows[0];
 
+      // Atualiza a localizacao do dono no momento que cria o alerta
+      await db.query(
+        `UPDATE profiles SET last_location = ST_SetSRID(ST_MakePoint($1,$2),4326) WHERE id = $3`,
+        [lng, lat, ownerId]
+      ).catch(console.error);
+
       if (!temRecompensa) {
         const veiculo2 = await db.query(`SELECT plate, model, color FROM vehicles WHERE id = $1`, [vehicleId]);
         const v = veiculo2.rows[0];
@@ -182,6 +188,12 @@ module.exports = (db, io, admin) => {
       if (rows.length === 0) return res.status(404).json({ error: 'Alerta nao encontrado' });
 
       const alerta = rows[0];
+
+      // Atualiza a localizacao do dono no momento que cria o alerta
+      await db.query(
+        `UPDATE profiles SET last_location = ST_SetSRID(ST_MakePoint($1,$2),4326) WHERE id = $3`,
+        [lng, lat, ownerId]
+      ).catch(console.error);
       if (alerta.status === 'active') return res.json({ pago: true, status: 'active' });
       if (!alerta.caucao_payment_id) return res.json({ pago: false, status: 'pending' });
 
@@ -237,6 +249,14 @@ module.exports = (db, io, admin) => {
         `UPDATE alerts SET last_seen_location = ST_SetSRID(ST_MakePoint($1,$2),4326), updated_at = NOW() WHERE id = $3`,
         [lng, lat, alertId]
       );
+
+      // Atualiza localizacao da testemunha
+      if (reporterId) {
+        await db.query(
+          `UPDATE profiles SET last_location = ST_SetSRID(ST_MakePoint($1,$2),4326) WHERE id = $3`,
+          [lng, lat, reporterId]
+        ).catch(console.error);
+      }
 
       io.emit('new_sighting', { alertId, lat, lng });
 
