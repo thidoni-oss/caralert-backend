@@ -98,20 +98,33 @@ module.exports = (db, io, admin) => {
       );
       const alerta = rows[0];
 
-      if (!temRecompensa) {
-        // Notifica pessoas proximas sobre o novo alerta
-        const veiculo2 = await db.query(`SELECT plate, model, color FROM vehicles WHERE id = $1`, [vehicleId]);
-        const v = veiculo2.rows[0];
-        if (v) {
-          enviarPushParaProximos(
-            lat, lng,
-            '🚨 Veiculo roubado na sua area!',
-            `${v.plate} — ${v.color} ${v.model}. Fique atento e reporte se avistar!`,
-            ownerId
-          ).catch(console.error);
-        }
-        return res.json({ success: true, alertId: alerta.id, precisaPagar: false });
-      }
+     if (!temRecompensa) {
+  const veiculo2 = await db.query(`SELECT plate, model, color FROM vehicles WHERE id = $1`, [vehicleId]);
+  const v = veiculo2.rows[0];
+  if (v) {
+    console.log('Tentando notificar proximos em:', lat, lng, 'dono:', ownerId);
+    enviarPushParaProximos(
+      lat, lng,
+      '🚨 Veiculo roubado na sua area!',
+      `${v.plate} — ${v.color} ${v.model}. Fique atento e reporte se avistar!`,
+      ownerId
+    ).catch(console.error);
+  }
+  const proximosCount = await db.query(
+    `SELECT COUNT(*) as total FROM profiles 
+     WHERE fcm_token IS NOT NULL 
+     AND id != $1 
+     AND last_location IS NOT NULL
+     AND ST_DWithin(last_location, ST_SetSRID(ST_MakePoint($2,$3),4326), 0.045)`,
+    [ownerId, lng, lat]
+  );
+  return res.json({ 
+    success: true, 
+    alertId: alerta.id, 
+    precisaPagar: false,
+    proximosNotificados: parseInt(proximosCount.rows[0].total)
+  });
+}
 
       // Tem recompensa — gera PIX do caucao (recompensa x 1,01)
       const valorCaucao = (parseFloat(recompensa) * 1.01).toFixed(2);
