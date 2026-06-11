@@ -1,3 +1,4 @@
+// AvisaAI v2.3 - notificacoes proximos
 const router = require('express').Router();
 const { adicionarNaFila } = require('./emails');
 
@@ -20,14 +21,13 @@ module.exports = (db, io, admin) => {
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({ to: token, title: titulo, body: corpo, sound: 'default', priority: 'high' })
       });
-      console.log(`Push enviado para dono do alerta ${alertId}`);
+      console.log('Push enviado para dono do alerta ' + alertId);
     } catch (e) {
       console.error('Erro ao enviar push para dono:', e.message);
     }
   };
 
-  // Envia push para todas as pessoas num raio de 5km de uma coordenada
-  // excluindo o proprio dono do alerta (para nao receber notificacao duplicada)
+  // Envia push para todas as pessoas num raio de 5km
   const enviarPushParaProximos = async (lat, lng, titulo, corpo, excluirUserId) => {
     try {
       const { rows } = await db.query(
@@ -43,12 +43,14 @@ module.exports = (db, io, admin) => {
            )`,
         [lng, lat, excluirUserId]
       );
-      console.log('Usuarios proximos encontrados:', rows.length, 'lat:', lat, 'lng:', lng);
+
+      console.log('Usuarios proximos encontrados: ' + rows.length + ' lat:' + lat + ' lng:' + lng);
+
+      if (rows.length === 0) {
         console.log('Nenhum usuario proximo para notificar');
         return;
       }
 
-      // Envia em lotes de 100 (limite do Expo Push)
       const tokens = rows.map(r => r.fcm_token);
       const lotes = [];
       for (let i = 0; i < tokens.length; i += 100) {
@@ -71,23 +73,20 @@ module.exports = (db, io, admin) => {
         });
       }
 
-      console.log(`Push enviado para ${tokens.length} usuario(s) proximos`);
+      console.log('Push enviado para ' + tokens.length + ' usuario(s) proximos');
     } catch (e) {
       console.error('Erro ao enviar push para proximos:', e.message);
     }
   };
 
-  // Cria o alerta — se tiver recompensa, gera PIX do caucao primeiro
+  // Cria o alerta
   router.post('/', async (req, res) => {
     try {
       const { vehicleId, ownerId, lat, lng } = req.body;
 
-      // Verifica se o veiculo tem recompensa
       const veiculo = await db.query(`SELECT recompensa FROM vehicles WHERE id = $1`, [vehicleId]);
       const recompensa = veiculo.rows[0]?.recompensa;
       const temRecompensa = recompensa && parseFloat(recompensa) > 0;
-
-      // Sem recompensa = alerta ativo direto, sem cobranca
       const statusInicial = temRecompensa ? 'pending' : 'active';
 
       const { rows } = await db.query(
@@ -98,35 +97,36 @@ module.exports = (db, io, admin) => {
       );
       const alerta = rows[0];
 
-     if (!temRecompensa) {
-  const veiculo2 = await db.query(`SELECT plate, model, color FROM vehicles WHERE id = $1`, [vehicleId]);
-  const v = veiculo2.rows[0];
-  if (v) {
-    console.log('Tentando notificar proximos em:', lat, lng, 'dono:', ownerId);
-    enviarPushParaProximos(
-      lat, lng,
-      '🚨 Veiculo roubado na sua area!',
-      `${v.plate} — ${v.color} ${v.model}. Fique atento e reporte se avistar!`,
-      ownerId
-    ).catch(console.error);
-  }
-  const proximosCount = await db.query(
-    `SELECT COUNT(*) as total FROM profiles 
-     WHERE fcm_token IS NOT NULL 
-     AND id != $1 
-     AND last_location IS NOT NULL
-     AND ST_DWithin(last_location, ST_SetSRID(ST_MakePoint($2,$3),4326), 0.045)`,
-    [ownerId, lng, lat]
-  );
-  return res.json({ 
-    success: true, 
-    alertId: alerta.id, 
-    precisaPagar: false,
-    proximosNotificados: parseInt(proximosCount.rows[0].total)
-  });
-}
+      if (!temRecompensa) {
+        const veiculo2 = await db.query(`SELECT plate, model, color FROM vehicles WHERE id = $1`, [vehicleId]);
+        const v = veiculo2.rows[0];
+        if (v) {
+          console.log('Tentando notificar proximos em: ' + lat + ' ' + lng + ' dono: ' + ownerId);
+          enviarPushParaProximos(
+            lat, lng,
+            '🚨 Veiculo roubado na sua area!',
+            v.plate + ' — ' + v.color + ' ' + v.model + '. Fique atento e reporte se avistar!',
+            ownerId
+          ).catch(console.error);
+        }
 
-      // Tem recompensa — gera PIX do caucao (recompensa x 1,01)
+        const proximosCount = await db.query(
+          `SELECT COUNT(*) as total FROM profiles
+           WHERE fcm_token IS NOT NULL
+           AND id != $1
+           AND last_location IS NOT NULL
+           AND ST_DWithin(last_location, ST_SetSRID(ST_MakePoint($2,$3),4326), 0.045)`,
+          [ownerId, lng, lat]
+        );
+
+        return res.json({
+          success: true,
+          alertId: alerta.id,
+          precisaPagar: false,
+          proximosNotificados: parseInt(proximosCount.rows[0].total)
+        });
+      }
+
       const valorCaucao = (parseFloat(recompensa) * 1.01).toFixed(2);
       const mpRes = await fetch('https://api.mercadopago.com/v1/payments', {
         method: 'POST',
@@ -147,7 +147,6 @@ module.exports = (db, io, admin) => {
       const mpData = await mpRes.json();
 
       if (!mpRes.ok) {
-        // Se o MP falhou, ativa o alerta mesmo assim
         await db.query(`UPDATE alerts SET status = 'active' WHERE id = $1`, [alerta.id]);
         return res.json({ success: true, alertId: alerta.id, precisaPagar: false });
       }
@@ -174,7 +173,6 @@ module.exports = (db, io, admin) => {
     }
   });
 
-  // O app consulta esta rota a cada 5s para saber se o pagamento foi confirmado
   router.get('/:id/status-pagamento', async (req, res) => {
     try {
       const alertId = req.params.id;
@@ -184,11 +182,9 @@ module.exports = (db, io, admin) => {
       if (rows.length === 0) return res.status(404).json({ error: 'Alerta nao encontrado' });
 
       const alerta = rows[0];
-
       if (alerta.status === 'active') return res.json({ pago: true, status: 'active' });
       if (!alerta.caucao_payment_id) return res.json({ pago: false, status: 'pending' });
 
-      // Consulta o Mercado Pago
       const mpRes = await fetch(
         'https://api.mercadopago.com/v1/payments/' + alerta.caucao_payment_id,
         { headers: { 'Authorization': 'Bearer ' + process.env.MP_ACCESS_TOKEN } }
@@ -200,7 +196,6 @@ module.exports = (db, io, admin) => {
           `UPDATE alerts SET status = 'active', caucao_status = 'paid' WHERE id = $1`, [alertId]
         );
 
-        // Notifica pessoas proximas sobre o novo alerta ativo
         const alertaInfo = await db.query(
           `SELECT v.plate, v.model, v.color, v.recompensa, a.owner_id,
                   ST_Y(a.origin_location) as lat, ST_X(a.origin_location) as lng
@@ -209,11 +204,11 @@ module.exports = (db, io, admin) => {
         );
         if (alertaInfo.rows.length > 0) {
           const info = alertaInfo.rows[0];
-          const msgRecompensa = info.recompensa ? ` Recompensa: R$ ${info.recompensa}!` : '';
+          const msgRecompensa = info.recompensa ? ' Recompensa: R$ ' + info.recompensa + '!' : '';
           enviarPushParaProximos(
             info.lat, info.lng,
             '🚨 Veiculo roubado na sua area!',
-            `${info.plate} — ${info.color} ${info.model}. Fique atento!${msgRecompensa}`,
+            info.plate + ' — ' + info.color + ' ' + info.model + '. Fique atento!' + msgRecompensa,
             info.owner_id
           ).catch(console.error);
         }
@@ -254,20 +249,19 @@ module.exports = (db, io, admin) => {
       if (alertInfo.rows.length > 0) {
         const v = alertInfo.rows[0];
 
-        // Push para o dono
         await enviarPushParaDono(
           alertId,
           '🚨 Seu veiculo foi avistado!',
-          `${v.plate} — ${v.color} ${v.model} foi visto proximo a voce. Toque para ver no mapa.`
+          v.plate + ' — ' + v.color + ' ' + v.model + ' foi visto proximo a voce. Toque para ver no mapa.'
         );
 
-        // Push para pessoas proximas ao avistamento (a rede se propaga!)
         enviarPushParaProximos(
           lat, lng,
           '👀 Veiculo roubado avistado aqui perto!',
-          `${v.plate} — ${v.color} ${v.model}. Voce o ve? Ajude a localizar!`,
+          v.plate + ' — ' + v.color + ' ' + v.model + '. Voce o ve? Ajude a localizar!',
           null
         ).catch(console.error);
+
         if (chavePix) {
           adicionarNaFila(db, 'testemunha', {
             placa: v.plate, modelo: v.model, cor: v.color,
