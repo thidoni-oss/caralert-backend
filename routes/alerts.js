@@ -1,4 +1,3 @@
-// AvisaAI v2.2 - notificacoes proximos
 const router = require('express').Router();
 const { adicionarNaFila } = require('./emails');
 
@@ -44,8 +43,7 @@ module.exports = (db, io, admin) => {
            )`,
         [lng, lat, excluirUserId]
       );
-
-      if (rows.length === 0) {
+      console.log('Usuarios proximos encontrados:', rows.length, 'lat:', lat, 'lng:', lng);
         console.log('Nenhum usuario proximo para notificar');
         return;
       }
@@ -105,7 +103,6 @@ module.exports = (db, io, admin) => {
         const veiculo2 = await db.query(`SELECT plate, model, color FROM vehicles WHERE id = $1`, [vehicleId]);
         const v = veiculo2.rows[0];
         if (v) {
-          console.log('Tentando notificar proximos em:', lat, lng, 'dono:', ownerId);
           enviarPushParaProximos(
             lat, lng,
             '🚨 Veiculo roubado na sua area!',
