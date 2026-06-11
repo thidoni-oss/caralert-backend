@@ -3,7 +3,7 @@ const { adicionarNaFila } = require('./emails');
 
 module.exports = (db, io, admin) => {
 
-  // Função auxiliar: envia push para o dono do alerta via Expo
+  // Envia push para o dono do alerta
   const enviarPushParaDono = async (alertId, titulo, corpo) => {
     try {
       const { rows } = await db.query(
@@ -20,9 +20,61 @@ module.exports = (db, io, admin) => {
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({ to: token, title: titulo, body: corpo, sound: 'default', priority: 'high' })
       });
-      console.log(`Push enviado para alerta ${alertId}`);
+      console.log(`Push enviado para dono do alerta ${alertId}`);
     } catch (e) {
-      console.error('Erro ao enviar push:', e.message);
+      console.error('Erro ao enviar push para dono:', e.message);
+    }
+  };
+
+  // Envia push para todas as pessoas num raio de 5km de uma coordenada
+  // excluindo o proprio dono do alerta (para nao receber notificacao duplicada)
+  const enviarPushParaProximos = async (lat, lng, titulo, corpo, excluirUserId) => {
+    try {
+      const { rows } = await db.query(
+        `SELECT DISTINCT p.fcm_token
+         FROM profiles p
+         WHERE p.fcm_token IS NOT NULL
+           AND ($3::uuid IS NULL OR p.id != $3)
+           AND p.last_location IS NOT NULL
+           AND ST_DWithin(
+             p.last_location,
+             ST_SetSRID(ST_MakePoint($1,$2), 4326),
+             0.045
+           )`,
+        [lng, lat, excluirUserId]
+      );
+
+      if (rows.length === 0) {
+        console.log('Nenhum usuario proximo para notificar');
+        return;
+      }
+
+      // Envia em lotes de 100 (limite do Expo Push)
+      const tokens = rows.map(r => r.fcm_token);
+      const lotes = [];
+      for (let i = 0; i < tokens.length; i += 100) {
+        lotes.push(tokens.slice(i, i + 100));
+      }
+
+      for (const lote of lotes) {
+        const mensagens = lote.map(token => ({
+          to: token,
+          title: titulo,
+          body: corpo,
+          sound: 'default',
+          priority: 'high'
+        }));
+
+        await fetch('https://exp.host/--/api/v2/push/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify(mensagens)
+        });
+      }
+
+      console.log(`Push enviado para ${tokens.length} usuario(s) proximos`);
+    } catch (e) {
+      console.error('Erro ao enviar push para proximos:', e.message);
     }
   };
 
@@ -48,6 +100,17 @@ module.exports = (db, io, admin) => {
       const alerta = rows[0];
 
       if (!temRecompensa) {
+        // Notifica pessoas proximas sobre o novo alerta
+        const veiculo2 = await db.query(`SELECT plate, model, color FROM vehicles WHERE id = $1`, [vehicleId]);
+        const v = veiculo2.rows[0];
+        if (v) {
+          enviarPushParaProximos(
+            lat, lng,
+            '🚨 Veiculo roubado na sua area!',
+            `${v.plate} — ${v.color} ${v.model}. Fique atento e reporte se avistar!`,
+            ownerId
+          ).catch(console.error);
+        }
         return res.json({ success: true, alertId: alerta.id, precisaPagar: false });
       }
 
@@ -124,6 +187,25 @@ module.exports = (db, io, admin) => {
         await db.query(
           `UPDATE alerts SET status = 'active', caucao_status = 'paid' WHERE id = $1`, [alertId]
         );
+
+        // Notifica pessoas proximas sobre o novo alerta ativo
+        const alertaInfo = await db.query(
+          `SELECT v.plate, v.model, v.color, v.recompensa, a.owner_id,
+                  ST_Y(a.origin_location) as lat, ST_X(a.origin_location) as lng
+           FROM alerts a JOIN vehicles v ON v.id = a.vehicle_id
+           WHERE a.id = $1`, [alertId]
+        );
+        if (alertaInfo.rows.length > 0) {
+          const info = alertaInfo.rows[0];
+          const msgRecompensa = info.recompensa ? ` Recompensa: R$ ${info.recompensa}!` : '';
+          enviarPushParaProximos(
+            info.lat, info.lng,
+            '🚨 Veiculo roubado na sua area!',
+            `${info.plate} — ${info.color} ${info.model}. Fique atento!${msgRecompensa}`,
+            info.owner_id
+          ).catch(console.error);
+        }
+
         return res.json({ pago: true, status: 'active' });
       }
 
@@ -159,11 +241,21 @@ module.exports = (db, io, admin) => {
 
       if (alertInfo.rows.length > 0) {
         const v = alertInfo.rows[0];
+
+        // Push para o dono
         await enviarPushParaDono(
           alertId,
-          'Seu veiculo foi avistado!',
+          '🚨 Seu veiculo foi avistado!',
           `${v.plate} — ${v.color} ${v.model} foi visto proximo a voce. Toque para ver no mapa.`
         );
+
+        // Push para pessoas proximas ao avistamento (a rede se propaga!)
+        enviarPushParaProximos(
+          lat, lng,
+          '👀 Veiculo roubado avistado aqui perto!',
+          `${v.plate} — ${v.color} ${v.model}. Voce o ve? Ajude a localizar!`,
+          null
+        ).catch(console.error);
         if (chavePix) {
           adicionarNaFila(db, 'testemunha', {
             placa: v.plate, modelo: v.model, cor: v.color,
