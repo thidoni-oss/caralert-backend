@@ -25,11 +25,19 @@ module.exports = (db) => {
 
   router.put('/:id/token', async (req, res) => {
     try {
-      const { fcmToken } = req.body;
-      await db.query(
-        'UPDATE profiles SET fcm_token=$1 WHERE id=$2',
-        [fcmToken, req.params.id]
-      );
+      const { fcmToken, lat, lng } = req.body;
+
+      if (lat && lng) {
+        await db.query(
+          'UPDATE profiles SET fcm_token=$1, last_location=ST_SetSRID(ST_MakePoint($2,$3),4326) WHERE id=$4',
+          [fcmToken, lng, lat, req.params.id]
+        );
+      } else {
+        await db.query(
+          'UPDATE profiles SET fcm_token=$1 WHERE id=$2',
+          [fcmToken, req.params.id]
+        );
+      }
       res.json({ success: true });
     } catch (e) {
       res.status(500).json({ error: e.message });
