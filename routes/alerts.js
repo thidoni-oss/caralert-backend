@@ -1,3 +1,4 @@
+// AvisaAI v2.2 - notificacoes proximos
 const router = require('express').Router();
 const { adicionarNaFila } = require('./emails');
 
