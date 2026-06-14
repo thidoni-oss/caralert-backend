@@ -189,11 +189,6 @@ module.exports = (db, io, admin) => {
 
       const alerta = rows[0];
 
-      // Atualiza a localizacao do dono no momento que cria o alerta
-      await db.query(
-        `UPDATE profiles SET last_location = ST_SetSRID(ST_MakePoint($1,$2),4326) WHERE id = $3`,
-        [lng, lat, ownerId]
-      ).catch(console.error);
       if (alerta.status === 'active') return res.json({ pago: true, status: 'active' });
       if (!alerta.caucao_payment_id) return res.json({ pago: false, status: 'pending' });
 
